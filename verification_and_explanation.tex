@@ -1,0 +1,191 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amsthm,amssymb}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\title{CS 218 Assignment 2\\Verification and Full Function/Theorem Explanation}
+\author{DAA2 Project Report}
+\date{April 3, 2026}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+
+\begin{document}
+\maketitle
+
+\section{Goal}
+This note does two things:
+\begin{enumerate}
+  \item Verifies whether the current Python implementation in \texttt{main.py} is correct.
+  \item Documents every theorem used and every defined function in the implementation.
+\end{enumerate}
+
+\section{Verification Result (Current Code State)}
+\subsection{Invariant Checks Used}
+For a polygon with holes, a valid triangulation should satisfy:
+\begin{enumerate}
+  \item Triangle interiors are inside walkable space.
+  \item No triangle edge intersects blocked boundary edges except at shared endpoints.
+  \item Area conservation: total triangle area equals walkable area.
+  \item Triangle count formula (after hole-bridging to a simple polygon) should be consistent with vertex count of the bridged simple polygon.
+\end{enumerate}
+
+\subsection{Executed Counterexample}
+Tested case:
+\begin{itemize}
+  \item Outer square: $(0,0),(20,0),(20,20),(0,20)$
+  \item One hole: $(7,7),(13,7),(13,13),(7,13)$
+\end{itemize}
+Observed from program output and direct area audit:
+\begin{itemize}
+  \item Reported triangles: $4$
+  \item Walkable doubled-area: $728$
+  \item Sum of triangle doubled-areas: $560$
+\end{itemize}
+Hence area conservation fails.
+
+\textbf{Conclusion:} the current implementation is \textbf{not fully correct} yet for general polygons with holes.
+
+\section{Theorems and Mathematical Facts Used}
+\begin{theorem}[Jordan Curve Theorem, algorithmic use]
+A simple closed polygonal chain partitions the plane into interior and exterior regions.
+\end{theorem}
+\textit{Use in code:} basis for ray-casting in \texttt{point\_in\_ring} and region membership in \texttt{point\_in\_region}.
+
+\begin{lemma}[Orientation and Segment Intersection Test]
+Given points $a,b,c,d$, orientation predicates and on-segment checks determine whether segments $ab$ and $cd$ intersect.
+\end{lemma}
+\textit{Use in code:} \texttt{orientation}, \texttt{on\_segment}, \texttt{segments\_intersect}.
+
+\begin{theorem}[Ear Existence Theorem]
+Every simple polygon with at least 4 vertices has at least two ears.
+\end{theorem}
+\textit{Use in code:} justifies iterative ear clipping in \texttt{ear\_clip\_triangulation}.
+
+\begin{theorem}[Art Gallery Upper Bound with Holes]
+For a polygon with $n$ total vertices and $h$ holes, an upper bound on point guards is
+\[
+\left\lfloor \frac{n + 2h}{3} \right\rfloor.
+\]
+\end{theorem}
+\textit{Use in code:} computed in \texttt{solve} as output metric \texttt{k}.
+
+\begin{lemma}[3-Coloring of Triangulation Graph]
+A maximal outerplanar triangulation graph is 3-colorable; choosing the smallest color class gives an upper bound guard set for simple polygons.
+\end{lemma}
+\textit{Use in code:} heuristic guard selection via \texttt{color\_outerplanar\_graph} and \texttt{choose\_guard\_positions}.
+
+\section{Function-by-Function Explanation}
+All functions listed below are from \texttt{main.py}.
+
+\subsection{Geometry Primitives}
+\begin{longtable}{p{0.28\linewidth}p{0.66\linewidth}}
+\toprule
+Function & Purpose \\
+\midrule
+\texttt{same\_point} & Exact coordinate equality check for two vertices. \\
+\texttt{cross} & Signed 2D cross product of vectors $(b-a)$ and $(c-a)$. \\
+\texttt{orientation} & Returns turn sign: left/right/collinear via cross product sign. \\
+\texttt{polygon\_area2} & Computes doubled signed area of a polygon. \\
+\texttt{ensure\_ccw} & Reorients vertex order to counter-clockwise if needed. \\
+\texttt{ensure\_cw} & Reorients vertex order to clockwise if needed. \\
+\texttt{remove\_consecutive\_duplicates} & Removes repeated adjacent points and closing duplicate. \\
+\texttt{on\_segment} & Tests if collinear point lies on segment bounds. \\
+\texttt{segments\_intersect} & Full segment-segment intersection test including collinear overlap. \\
+\texttt{point\_in\_ring} & Ray-casting point-in-polygon test on one ring. \\
+\texttt{point\_in\_region} & Inside outer ring and outside all holes check. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Hole Bridging to a Simple Boundary}
+\begin{longtable}{p{0.28\linewidth}p{0.66\linewidth}}
+\toprule
+Function & Purpose \\
+\midrule
+\texttt{visible\_bridge} & Checks if candidate bridge segment crosses existing edges and stays in valid region. \\
+\texttt{rightmost\_vertex\_index} & Selects rightmost vertex (tie by higher y). \\
+\texttt{choose\_bridge\_vertex} & Picks outer boundary vertex visible from selected hole vertex. \\
+\texttt{stitch\_hole\_into\_polygon} & Splices hole cycle and bridge duplicates into outer boundary walk. \\
+\texttt{bridge\_holes} & Repeats bridge-and-stitch for all holes, returns merged boundary and bridge list. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Monotone Decomposition Helpers}
+\begin{longtable}{p{0.28\linewidth}p{0.66\linewidth}}
+\toprule
+Function & Purpose \\
+\midrule
+\texttt{classify\_vertex} & Classifies vertex as start/end/split/merge/regular for sweep logic. \\
+\texttt{edge\_x\_at\_y} & Computes x-coordinate where edge intersects horizontal sweep line y. \\
+\texttt{edge\_crosses\_sweep} & Checks if an edge crosses current sweep y-level. \\
+\texttt{sort\_status} & Sorts sweep status edges by intersection x-value. \\
+\texttt{find\_left\_edge} & Finds nearest status edge strictly to the left of current vertex. \\
+\texttt{sweep\_line\_monotone\_diagonals} & Produces diagonals intended to partition polygon into y-monotone pieces. \\
+\texttt{split\_polygon\_by\_diagonal} & Splits one polygonal piece into two along a chosen diagonal. \\
+\texttt{decompose\_to\_monotone\_pieces} & Applies all decomposition diagonals to build monotone pieces. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Triangulation and Validity Filtering}
+\begin{longtable}{p{0.28\linewidth}p{0.66\linewidth}}
+\toprule
+Function & Purpose \\
+\midrule
+\texttt{triangulate\_y\_monotone} & Stack-based triangulation routine for one monotone piece. \\
+\texttt{triangulate\_polygon\_with\_holes} & Current main triangulation pipeline: bridge holes, triangulate merged polygon, filter triangles. \\
+\texttt{triangle\_vertices} & Extracts unique vertices used by produced triangles. \\
+\texttt{point\_in\_triangle} & Non-strict point-in-triangle test (boundary allowed). \\
+\texttt{point\_strictly\_in\_triangle} & Strict interior test (boundary excluded). \\
+\texttt{triangle\_is\_walkable} & Rejects triangles outside valid region or with invalid boundary intersections. \\
+\texttt{ear\_clip\_triangulation} & Ear clipping triangulation of a simple polygon. \\
+\bottomrule
+\end{longtable}
+
+\subsection{Guard Computation}
+\begin{longtable}{p{0.28\linewidth}p{0.66\linewidth}}
+\toprule
+Function & Purpose \\
+\midrule
+\texttt{build\_graph\_from\_triangles} & Builds adjacency graph from triangle edges. \\
+\texttt{color\_outerplanar\_graph} & Computes a 3-coloring-like assignment using degeneracy-style order. \\
+\texttt{choose\_guard\_positions} & Chooses up to $k$ guard vertices, preferring smallest color class. \\
+\bottomrule
+\end{longtable}
+
+\subsection{I/O and Plotting}
+\begin{longtable}{p{0.28\linewidth}p{0.66\linewidth}}
+\toprule
+Function & Purpose \\
+\midrule
+\texttt{parse\_input} & Parses all test cases from standard input format in assignment statement. \\
+\texttt{plot\_case} & Draws outer boundary, holes, triangle edges, bridge edges, and guards using matplotlib. \\
+\texttt{format\_triangle} & String formatter for one triangle output line. \\
+\texttt{format\_vertex} & String formatter for one guard coordinate output line. \\
+\texttt{solve} & Main orchestrator for parse, triangulate, guard bound, output, and plotting. \\
+\bottomrule
+\end{longtable}
+
+\section{Complexity Notes}
+\begin{itemize}
+  \item Primitive tests are constant time each.
+  \item Sweep-line helper section is designed around sorted status operations, but implemented with list scans/sorts in places; practical complexity can exceed strict $O(n \log n)$.
+  \item Ear clipping is typically $O(n^2)$ in worst case.
+\end{itemize}
+
+\section{What Must Be Fixed for Full Correctness}
+To make the implementation correct for all valid assignment inputs:
+\begin{enumerate}
+  \item Ensure bridged polygon is strictly simple and triangulated completely (no dropped ears, no missing regions).
+  \item Re-run area and coverage invariants for each test case.
+  \item Confirm generated triangles are disjoint in interior and exactly cover walkable region.
+\end{enumerate}
+
+\section{How to Compile This File}
+From the project folder:
+\begin{verbatim}
+pdflatex verification_and_explanation.tex
+\end{verbatim}
+
+\end{document}
