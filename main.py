@@ -481,13 +481,25 @@ def triangulate_y_monotone(piece: List[Vertex]) -> List[Triangle]:
 
 def triangulate_polygon_with_holes(polygons: List[Polygon]) -> Tuple[List[Triangle], List[Vertex], List[Tuple[Vertex, Vertex]]]:
 	merged, bridges = bridge_holes(polygons)
-	monotone_pieces = decompose_to_monotone_pieces(merged)
+	triangles = ear_clip_triangulation(merged)
 
-	triangles: List[Triangle] = []
-	for piece in monotone_pieces:
-		triangles.extend(triangulate_y_monotone(piece))
+	valid_triangles: List[Triangle] = []
+	for tri in triangles:
+		if triangle_is_walkable(tri, polygons):
+			valid_triangles.append(tri)
 
-	return triangles, merged, bridges
+	return valid_triangles, merged, bridges
+
+
+def triangle_vertices(triangles: Sequence[Triangle]) -> List[Vertex]:
+	seen: set[int] = set()
+	result: List[Vertex] = []
+	for tri in triangles:
+		for v in (tri.a, tri.b, tri.c):
+			if v.uid not in seen:
+				seen.add(v.uid)
+				result.append(v)
+	return result
 
 
 def point_in_triangle(p: Vertex, a: Vertex, b: Vertex, c: Vertex) -> bool:
@@ -508,6 +520,31 @@ def point_strictly_in_triangle(p: Vertex, a: Vertex, b: Vertex, c: Vertex) -> bo
 	all_pos = c1 > 0 and c2 > 0 and c3 > 0
 	all_neg = c1 < 0 and c2 < 0 and c3 < 0
 	return all_pos or all_neg
+
+
+def triangle_is_walkable(tri: Triangle, polygons: Sequence[Polygon]) -> bool:
+	if orientation(tri.a, tri.b, tri.c) == 0:
+		return False
+
+	cx = (tri.a.x + tri.b.x + tri.c.x) // 3
+	cy = (tri.a.y + tri.b.y + tri.c.y) // 3
+	centroid = Vertex(cx, cy, -1)
+	if not point_in_region(centroid, polygons):
+		return False
+
+	tri_edges = [(tri.a, tri.b), (tri.b, tri.c), (tri.c, tri.a)]
+	for poly in polygons:
+		rv = poly.vertices
+		for i in range(len(rv)):
+			p1 = rv[i]
+			p2 = rv[(i + 1) % len(rv)]
+			for e1, e2 in tri_edges:
+				if segments_intersect(e1, e2, p1, p2):
+					shared = same_point(e1, p1) or same_point(e1, p2) or same_point(e2, p1) or same_point(e2, p2)
+					if not shared:
+						return False
+
+	return True
 
 
 def ear_clip_triangulation(polygon: List[Vertex]) -> List[Triangle]:
@@ -728,11 +765,12 @@ def solve() -> None:
 	out_lines: List[str] = []
 	for case_id, polygons in enumerate(cases, start=1):
 		triangles, merged, bridges = triangulate_polygon_with_holes(polygons)
+		guard_vertices = triangle_vertices(triangles)
 
 		n = sum(len(poly.vertices) for poly in polygons)
 		h = max(0, len(polygons) - 1)
 		k = floor((n + 2 * h) / 3)
-		guards = choose_guard_positions(merged, triangles, k)
+		guards = choose_guard_positions(guard_vertices, triangles, k)
 		plot_path = plot_case(case_id, polygons, merged, triangles, guards, bridges)
 
 		out_lines.append(f"Case {case_id}")
